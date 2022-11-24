@@ -1,0 +1,39 @@
+
+num_classes: 19
+ignore_label: 255
+#  training_size: 19132
+training_size: 32
+voxel_size: 0.05
+
+train:
+  seed: 1588147245
+  deterministic: False
+
+dataset:
+  name: semantic_kitti
+  num_points: 80000
+
+
+num_epochs: 50
+batch_size: 1
+
+criterion:
+  name: cross_entropy
+  ignore_index: 255
+
+optimizer:
+  name: sgd
+  lr: 2.4e-1
+  weight_decay: 1.0e-4
+  momentum: 0.9
+  nesterov: true
+
+scheduler:
+  name: cosine_warmup
+
+workers_per_gpu: 8
+distributed: False
+amp_enabled: True
+
+model : spvcnn
+

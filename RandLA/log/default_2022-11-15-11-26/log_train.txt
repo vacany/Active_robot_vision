@@ -1,0 +1,14 @@
+20221115 11:26:05 DEBUG: Falling back to TensorFlow client; we recommended you install the Cloud TPU client directly with pip install cloud-tpu-client.
+20221115 11:26:06 DEBUG: Creating converter from 7 to 5
+20221115 11:26:06 DEBUG: Creating converter from 5 to 7
+20221115 11:26:06 DEBUG: Creating converter from 7 to 5
+20221115 11:26:06 DEBUG: Creating converter from 5 to 7
+20221115 11:26:25 DEBUG: Falling back to TensorFlow client; we recommended you install the Cloud TPU client directly with pip install cloud-tpu-client.
+20221115 11:26:25 DEBUG: Creating converter from 7 to 5
+20221115 11:26:25 DEBUG: Creating converter from 5 to 7
+20221115 11:26:25 DEBUG: Creating converter from 7 to 5
+20221115 11:26:25 DEBUG: Creating converter from 5 to 7
+20221115 11:26:29 INFO: Use Baseline: Rand-LA
+20221115 11:26:40 INFO: Training Config: Batch size: 6, max_epoch: 80, start epoch: 0
+20221115 11:27:20 INFO: Namespace(backbone='randla', checkpoint_path='', log_dir='log/default_2022-11-15-11-26', max_epoch=80, batch_size=6, val_batch_size=30, num_workers=10, focal=True, syn=0, focal_gamma=2, ignore='')
+20221115 11:27:20 INFO: **** EPOCH 000 ****
