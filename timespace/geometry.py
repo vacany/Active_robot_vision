@@ -40,14 +40,19 @@ def get_farthest_points(points):
 def distance_from_points(pcl, points, max_radius=10.):
     '''
     :param points: xyz special points, which define area(radius) of interest
+    :param pcl: whole point cloud to be eliminated
     :param max_radius:
     :return:
     '''
-    mask = np.zeros(pcl.shape[0], dtype=np.bool)
-    for point in points:
-        coors = pcl[:,:2] - point[None,:2]
+
+    # speed up
+    mask = min_square_by_pcl(pcl, points, extend_dist=max_radius, return_mask=True)
+    true_ids = np.argwhere(mask==True)[:,0]
+
+    for idx in true_ids:
+        coors = pcl[:,:2] - points[idx][None,:2]
         distance = np.sqrt(np.sum(coors ** 2, axis=1))
-        mask += distance < max_radius
+        mask[idx] += distance < max_radius
 
     dist_mask = mask > 0
 
@@ -55,9 +60,8 @@ def distance_from_points(pcl, points, max_radius=10.):
 
 
 
-def min_square_by_pcl(points, pcl, extend_dist=0., return_mask=False):
+def min_square_by_pcl(points, pcl, extend_dist=(0.,0.,0.), return_mask=False):
     '''
-
     :param points: points to eliminate
     :param pcl: point cloud which define square area
     :return: rest of points
@@ -67,14 +71,19 @@ def min_square_by_pcl(points, pcl, extend_dist=0., return_mask=False):
     x_max = pcl[:,0].max()
     y_min = pcl[:,1].min()
     y_max = pcl[:,1].max()
+    z_min = pcl[:,2].min()
+    z_max = pcl[:,2].max()
 
-    new_points_mask = (points[:,0] >= x_min - extend_dist) & (points[:,0] <= x_max + extend_dist) \
-                    & (points[:,1] >= y_min - extend_dist) & (points[:,1] <= y_max + extend_dist)
+    new_points_mask = (points[:,0] >= x_min - extend_dist[0]) & (points[:,0] <= x_max + extend_dist[0]) \
+                    & (points[:,1] >= y_min - extend_dist[1]) & (points[:,1] <= y_max + extend_dist[1]) \
+                    & (points[:,2] >= z_min - extend_dist[2]) & (points[:,2] <= z_max + extend_dist[2])
 
-    new_points = points[new_points_mask]
+
+
     if return_mask:
         return new_points_mask
     else:
+        new_points = points[new_points_mask]
         return new_points
 
 def bev_fill_flood(image):
@@ -311,3 +320,27 @@ def get_centroids_from_cluster(points, clusters):
         centroid_list.append(clusters_centroid)
 
     return centroid_list
+
+def center_position_and_surrounding(center_pts, surrounding_pts):
+    pts1 = center_pts.copy()
+    pts2 = surrounding_pts.copy()
+
+    center_x = center_pts[:, 0].mean()
+    center_y = center_pts[:, 1].mean()
+
+    # Recenter point clouds
+    pts1[:, 0] -= center_x
+    pts1[:, 1] -= center_y
+
+    pts2[:, 0] -= center_x
+    pts2[:, 1] -= center_y
+
+    return pts1, pts2
+
+def transform_pts(inside_pts, transform_mat):
+    tmp_pts = inside_pts.copy()
+    tmp_pts[:,3] = 1
+    shifted_inside_pts = inside_pts.copy()
+    shifted_inside_pts[:,:3] = (tmp_pts[:,:4] @ transform_mat.T)[:,:3]
+
+    return shifted_inside_pts

@@ -1,12 +1,15 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import os
-import glob
+import torch
 
+from pytorch3d.loss.chamfer import chamfer_distance
+from pytorch3d.transforms import se3_exp_map
+from pytorch3d.ops.points_alignment import iterative_closest_point, corresponding_points_alignment
 from sklearn.neighbors import NearestNeighbors
 from munkres import Munkres
 
-from visual_utils import visualize_connected_points
+import visualizer
+from timespace.visual_utils import visualize_connected_points
 
 def Hungarian_point_matching(selected_points, to_match_points, plot=False):
     '''
@@ -33,6 +36,20 @@ def Hungarian_point_matching(selected_points, to_match_points, plot=False):
 
     return next_indices
 
+def pytorch3d_ICP(pts1, pts2, device=0, verbose=False):
+    a = torch.tensor(pts1[:, :3], dtype=torch.float).unsqueeze(0).cuda()
+    b = torch.tensor(pts2[:, :3], dtype=torch.float).unsqueeze(0).cuda()
+
+    out = iterative_closest_point(a, b, verbose=verbose)
+    R = out.RTs.R[0].detach().cpu()
+    T = out.RTs.T[0].detach().cpu()
+    transformed_pts = out.Xt[0]
+
+    T_mat = torch.eye(4)
+    T_mat[:3,:3] = R
+    T_mat[:3,-1] = T
+
+    return T_mat, transformed_pts
 
 def numpy_chamfer_distance(x, y, metric='l2', direction='bi'):
     """Chamfer distance between two point clouds
@@ -161,60 +178,97 @@ def sinkhorn(feature1, feature2, pcloud1, pcloud2, epsilon, gamma, max_iter):
 
     return T
 
+class Fit_rigid_transoform():
+
+    def __init__(self, rot_vec=(0,0,0), trans=(0,0,0), metric='chamfer'):
+        self.init_rot_vec = torch.tensor(rot_vec, dtype=torch.float, requires_grad=True)
+        self.init_trans = torch.tensor(trans, dtype=torch.float, requires_grad=True)
+        self.metric = metric
+        # should be in coordinate of center of the object
+
+    def fit_rigid_transform(self, pts1, pts2, sub_samples=50, lr=0.3, max_iteration=100, plot=False):
+        '''
+
+        :param pts1: to be fit on the pts2
+        :param pts2: final goal of transforming pts1
+        :param max_iteration:
+        :param plot:
+        :return:
+        '''
+        rot_vec = torch.tensor(self.init_rot_vec, dtype=torch.float, requires_grad=True)
+        trans = torch.tensor(self.init_trans, dtype=torch.float, requires_grad=True)
+
+        # init data
+        if type(pts1) == np.ndarray:
+            pts1 = torch.tensor(pts1, dtype=torch.float)
+
+        if type(pts2) == np.ndarray:
+            pts2 = torch.tensor(pts2, dtype=torch.float)
+
+        if len(pts1.shape) != 3:
+            pts1 = pts1.unsqueeze(0)
+
+        if len(pts2.shape) != 3:
+            pts2 = pts2.unsqueeze(0)
+
+        features1 = pts1[:,:,3:].clone()
+        sample_features1 = pts1[:,:,3:].clone()
+        move_pts1 = torch.cat((pts1[:,:,:3], torch.ones((pts1.shape[0], pts1.shape[1], 1))), dim=2)
+
+        sample_pts1 = move_pts1.clone()
+        sample_pts2 = pts2.clone()
+
+        for epoch in range(max_iteration):
+
+            log_trans = torch.cat((trans, rot_vec)).unsqueeze(0)
+            estimated_transmat = se3_exp_map(log_trans)
+
+            # Sub Sampling
+            if move_pts1.shape[1] > sub_samples:
+                indices = np.random.choice(move_pts1.shape[1], sub_samples)
+                sample_pts1 = move_pts1[:, indices]
+                sample_features1 = features1[:, indices]
+
+            if pts2.shape[1] > sub_samples:
+                indices2 = np.random.choice(pts2.shape[1], sub_samples)
+                sample_pts2 = pts2[:, indices2]
+
+            move_cluster1 = torch.bmm(sample_pts1, estimated_transmat)[:,:,:3]
+
+            moved_with_features1 = torch.cat((move_cluster1, sample_features1), dim=2)
+
+            tmp_chamf_dist = chamfer_distance(moved_with_features1, sample_pts2)[0]
+
+            loss = tmp_chamf_dist
+            loss.backward(retain_graph=True)
+
+
+            print(estimated_transmat)
+            print('Loss: ', f'{loss.item():.2f}', 'Grad: ', rot_vec.grad, trans.grad)
+
+
+            with torch.no_grad():
+                rot_vec -= lr * rot_vec.grad
+                trans -= lr * trans.grad
+
+                rot_vec.grad.zero_()
+                trans.grad.zero_()
+
+            if plot:
+
+                with torch.no_grad():
+                    start_vis = pts1.detach()
+                    curr_vis = move_cluster1.detach()
+                    plt.plot(start_vis[0, :, 0], start_vis[0, :, 1], 'b.')
+                    plt.plot(curr_vis[0, :, 0], curr_vis[0, :, 1], 'g.')
+                    plt.plot(sample_pts2[0, :, 0], sample_pts2[0, :, 1], 'r.')
+                    plt.title(f'Loss: {loss.item():.2f} \t Grad: {rot_vec.grad} \t {trans.grad}')
+                    plt.show()
+
+        if plot:
+            visualizer.visualize_multiple_pcls(start_vis[0].detach().numpy(), curr_vis[0].detach().numpy(), sample_pts2[0].detach().numpy())
+
+        return rot_vec, trans
+
 if __name__ == "__main__":
-    from pat.toy_dataset import Sequence_Loader
-    from pytorch3d.loss.chamfer import chamfer_distance
-    import torch
-
-    frame_id = 260
-    # test registration
-    dataset = Sequence_Loader(dataset_name='synlidar', sequence=4)
-    batch = dataset.__getitem__(frame_id)
-    batch2 = dataset.__getitem__(frame_id + 1)
-
-    # Preload
-    pts = batch['global_pts']
-    instance = batch['instance']
-    labels = batch['label_mapped']
-
-    pts2 = batch2['global_pts']
-    instance2 = batch2['instance']
-    labels2 = batch2['label_mapped']
-
-    cluster_id = 19
-    cluster1 = pts[instance == cluster_id]
-    cluster2 = pts2[instance2 == cluster_id]
-
-    # below lidar
-    z_lidar = batch['pose'][2,-1]  # chosen just single batch!
-    cluster1 = cluster1[cluster1[:,2] > z_lidar - 1.]
-    cluster2 = cluster2[cluster2[:,2] > z_lidar - 1.]
-
-    
-    # transformation = refine_cluster_motion(cluster1, cluster2)
-
-    min_dist = 4
-    min_idx = [0, 0]
-    for i in range(-40,0):
-        print(i)
-        for j in range(-10,10):
-            tensor_cluster1 = torch.tensor(cluster1).unsqueeze(0)
-            tensor_cluster2 = torch.tensor(cluster2).unsqueeze(0)
-
-            move_cluster1 = tensor_cluster1.clone()
-            move_cluster1[0,:,:3] += torch.tensor((i/10,j/10,0))
-
-            tmp_chamf_dist = chamfer_distance(move_cluster1, tensor_cluster2)[0]
-
-            if tmp_chamf_dist < min_dist:
-                print(tmp_chamf_dist)
-                min_dist = tmp_chamf_dist
-                final_cluster = move_cluster1
-                min_idx[0] = i
-                min_idx[1] = j
-
-                plt.plot(tensor_cluster1[0, :, 0], tensor_cluster1[0, :, 1], 'b.')
-                plt.plot(tensor_cluster2[0,:,0], tensor_cluster2[0,:,1], 'r.')
-                plt.plot(final_cluster[0,:,0], final_cluster[0,:,1], 'y.')
-                plt.savefig(f'/home/vacekpa2/tmp/{min_idx}_{tmp_chamf_dist}_chamfer.png')
-                plt.clf()
+    pass

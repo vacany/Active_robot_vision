@@ -1,0 +1,9 @@
+dataloader:
+  feats: lidar_type
+  voxelization: [.1, .1, .1]
+  which_lidar: all
+
+model:
+  arch: minkunet34
+  in_channels: 1
+  nb_class: 15

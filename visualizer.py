@@ -1,3 +1,5 @@
+import os.path
+
 import numpy as np
 import glob
 import matplotlib.pyplot as plt
@@ -16,7 +18,7 @@ if socket.gethostname().startswith("Pat"):
             v = pptk.viewer(points[:,:3])
         else:
             v = pptk.viewer(points[:, :3], labels)
-        v.set(point_size=0.02)
+        v.set(point_size=0.004)
 
         return v
 
@@ -43,9 +45,10 @@ if socket.gethostname().startswith("Pat"):
     def visualize_multiple_pcls(*args):
         p = []
         l = []
+
         for n, points in enumerate(args):
             p.append(points[:,:3])
-            l.append(n * np.ones(points.shape[0]))
+            l.append(n * np.ones((points.shape[0])))
 
         p = np.concatenate(p)
         l = np.concatenate(l)
@@ -72,67 +75,12 @@ if socket.gethostname().startswith("Pat"):
         visualize_points3D(vis_pts, vis_pts[:,3])
 
 else:
-    def visualize_points3D(*args):
+    def visualize_points3D(pts, color=None, path=os.path.expanduser("~") + '/data/tmp_vis/visul'):
+        np.save(path, pts)
+        if color is None:
+            np.save(path + '_color.npy', np.zeros(pts.shape[0], dtype=bool))
+        else:
+            np.save(path + '_color.npy', color)
+
+
         pass
-
-if __name__ == "__main__":
-        frame_id = int(sys.argv[1])
-
-        import numpy as np
-        # import pyviz3d.visualizer as viz
-        from pat.toy_dataset import Sequence_Loader
-
-        dataset = Sequence_Loader(sequence=4)
-        batch = dataset.__getitem__(frame_id)
-
-        pts = batch['pts']
-        instance = batch['instance']
-        labels = batch['label_mapped']
-
-        # path = './'
-        # instance = np.load(path + f'instance/{frame_id:06}.npy')
-        # labels = np.load(path + f'label_mapped/{frame_id:06}.npy')
-        # labels[labels==255] = -1
-        mask = pts[:,2] > -1.
-
-        visualize_points3D(pts[mask], instance[mask])
-        visualize_points3D(pts, mask)
-        visualize_points3D(pts[mask], pts[mask,3])
-
-        # pyviz works, use it for remote on rci?
-        # for frame_id in range(269, 270):
-        #     name = 'PointClouds;' + str(frame_id)
-        #     labels = np.load(f'randla_predictions/{frame_id:06d}.npy')
-        #     points = np.fromfile(f'velodyne/{frame_id:06d}.bin', dtype=np.float32).reshape(-1, 4)
-        #
-        #     v = visualize_points3D(points)
-        #     v.set(lookat=[0,0,0], r=60)
-        #     time.sleep(2)
-        #     v.capture(f'/home/patrik/tmp/{frame_id:06d}.png')
-        #
-        #     time.sleep(2)
-        #     v.clear()
-
-            # # Pass xyz to Open3D.o3d.geometry.PointCloud and visualize
-            # pcd = o3d.geometry.PointCloud()
-            # pcd.points = o3d.utility.Vector3dVector(points[:,:3])
-            # pcd.colors = o3d.utility.Vector3dVector(labels / 20)
-            # vis = o3d.visualization.Visualizer()
-            # vis.create_window()
-            #
-            # vis.add_geometry(pcd)
-            #
-            # control = vis.get_view_control()
-            # control.change_field_of_view(60.0)
-            # control.set_front([0.2673283514716997, -0.95566213685799162, 0.12347239641086065])
-            # control.set_lookat([0.2673283514716997, -0.95566213685799162, 0.12347239641086065])
-            # control.set_up([-0.056565744923280217, 0.11235147526369287, 0.99205718711541346])
-            # control.set_zoom(0.049367675781250009)
-            #
-            # vis.run()
-            # vis.capture_screen_image(f'/home/patrik/tmp/{frame_id:06d}.png')
-            #
-            # vis.destroy_window()
-            # del control
-            # del vis
-

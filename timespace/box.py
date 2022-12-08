@@ -143,17 +143,21 @@ def concatenate_box_pcl(boxes, pcl, label, box_label=1):
 
     return pcl, label
 
-def get_bbox_points(bboxes, features=3):
+def get_bbox_points(bboxes, feature_values=None, fill_points = 30):
     '''
 
     :param bbox: (N ; x,y,z,l,w,h,yaw)
+           feature_values: Features assigned to the box, input per-box array/list
     :return: point cloud of box: x,y,z,l
     '''
-    bbox_vis = connect_3d_corners(bboxes, fill_points=30)
-    # bbox_vis = np.concatenate(bbox_vis)
+    bbox_vis = connect_3d_corners(bboxes, fill_points=fill_points)
+    bbox_vis = np.insert(bbox_vis, 3, 1, axis=1)  # class label
 
-    for i in range(0, features):
-        bbox_vis = np.insert(bbox_vis, 3 + i, 1, axis=1)  # class label
+    if feature_values is not None:
+        nbr_pts_per_box = fill_points * 12
+        pts_feature = np.concatenate([np.ones(nbr_pts_per_box) * feat for feat in feature_values])
+
+        bbox_vis = np.insert(bbox_vis, 3, pts_feature, axis=1)  # class label
 
     return bbox_vis
 

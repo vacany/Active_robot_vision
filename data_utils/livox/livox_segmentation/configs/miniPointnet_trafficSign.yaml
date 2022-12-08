@@ -1,0 +1,9 @@
+dataloader:
+  feats: intensity+lidar_type+height
+  voxelization: [.1, .1, .1]
+  which_lidar: all
+
+model:
+  arch: mini-pointnet
+  in_channels: 3
+  nb_class: 3
